@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Nova — a voice-controlled personal AI assistant for Windows 11. Architecture showcase: custom wake-word training, streaming speech pipeline, hybrid local/cloud inference, and tiered security." />
+  <title>Nova — Voice Assistant Architecture</title>
+  <style>
+    :root {
+      --bg: #0F172A;
+      --bg-soft: #1E293B;
+      --panel: #1E293B;
+      --border: #334155;
+      --text: #E2E8F0;
+      --text-muted: #94A3B8;
+      --accent: #60A5FA;
+      --accent-strong: #3B82F6;
+      --ml: #A78BFA;
+      --security: #F87171;
+      --good: #34D399;
+      --warning: #FBBF24;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+    a:hover { border-bottom-color: var(--accent); }
+    code {
+      font-family: 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+      font-size: .9em;
+      background: var(--bg-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    /* Layout ------------------------------------------------------------- */
+    header {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 88px 32px 48px;
+      text-align: center;
+    }
+    header h1 {
+      font-size: clamp(32px, 5vw, 56px);
+      letter-spacing: -0.02em;
+      margin: 0 0 12px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    header .tagline {
+      font-size: clamp(17px, 2vw, 21px);
+      color: var(--text-muted);
+      max-width: 720px;
+      margin: 0 auto 32px;
+    }
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 0 auto;
+      max-width: 860px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .pill strong { color: var(--text); font-weight: 600; }
+
+    main { max-width: 1120px; margin: 0 auto; padding: 0 32px 96px; }
+
+    .overview {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 36px;
+      margin-top: 40px;
+    }
+    .overview h2 {
+      margin: 0 0 16px;
+      font-size: 22px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .overview p { margin: 0 0 14px; }
+    .overview p:last-child { margin-bottom: 0; }
+    .overview strong { color: var(--text); }
+    .overview ul { margin: 10px 0 0; padding-left: 22px; }
+    .overview li { margin-bottom: 8px; }
+
+    /* Diagram sections --------------------------------------------------- */
+    section.view {
+      margin-top: 64px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .view-header {
+      padding: 28px 36px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(96, 165, 250, 0.05) 0%, transparent 100%);
+    }
+    .view-tag {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .view-tag.context { background: rgba(96, 165, 250, 0.15); color: var(--accent); }
+    .view-tag.containers { background: rgba(52, 211, 153, 0.15); color: var(--good); }
+    .view-tag.ml { background: rgba(167, 139, 250, 0.15); color: var(--ml); }
+    .view-tag.security { background: rgba(248, 113, 113, 0.15); color: var(--security); }
+    .view-header h3 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .view-header .blurb {
+      margin: 0;
+      color: var(--text-muted);
+      max-width: 860px;
+    }
+    .view-body { padding: 28px 36px 32px; }
+    .diagram-frame {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow: auto;
+    }
+    .diagram-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: 100%;
+    }
+    .view-footer {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    .view-footer a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg-soft);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+    }
+    .view-footer a:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .view-highlights {
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: var(--bg);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+    }
+    .view-highlights h4 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .view-highlights ul { margin: 0; padding-left: 20px; }
+    .view-highlights li { margin-bottom: 4px; color: var(--text); }
+    .view-highlights li code { font-size: 13px; }
+
+    /* Tech stack grid ---------------------------------------------------- */
+    .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 40px;
+    }
+    .stack-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+    }
+    .stack-card h4 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .stack-card ul { margin: 0; padding-left: 0; list-style: none; }
+    .stack-card li {
+      padding: 4px 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .stack-card li strong { color: var(--text); font-weight: 600; }
+
+    /* Footer ------------------------------------------------------------- */
+    footer {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      border-top: 1px solid var(--border);
+      margin-top: 80px;
+    }
+    footer p { margin: 6px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Nova</h1>
+  <p class="tagline">
+    A voice-controlled personal AI assistant for Windows 11.
+    Hybrid local + cloud inference, custom-trained wake word, layered security with a zero-lockout guarantee.
+  </p>
+  <div class="pill-row">
+    <span class="pill"><strong>Python 3.11+</strong></span>
+    <span class="pill"><strong>PyTorch</strong> · custom wake-word CNN</span>
+    <span class="pill"><strong>ONNX Runtime</strong> · streaming inference</span>
+    <span class="pill"><strong>faster-whisper</strong> · int8 STT</span>
+    <span class="pill"><strong>Claude API</strong> · cloud escalation</span>
+    <span class="pill"><strong>pywin32 + WinRT</strong></span>
+    <span class="pill"><strong>PySide6</strong> · Qt desktop UI</span>
+  </div>
+</header>
+
+<main>
+
+<div class="overview">
+  <h2>What this project is</h2>
+  <p>
+    <strong>Nova</strong> is a Windows 11 voice assistant that listens for a custom wake phrase
+    (&ldquo;Hey Nova&rdquo;), transcribes commands locally, classifies intent, and either executes a native
+    OS action or escalates to a cloud LLM &mdash; all while staying under a 3% idle-CPU budget.
+  </p>
+  <p>
+    The implementation repo is private. This page hosts the architecture documentation so the design
+    can be reviewed without exposing source. For depth beyond the diagrams, see the
+    <a href="nova-design-doc.pdf">full design document (PDF)</a>.
+  </p>
+  <p><strong>Technical highlights that shaped the architecture:</strong></p>
+  <ul>
+    <li>A custom <strong>wake-word classifier trained from scratch</strong> in PyTorch on 13k Piper-TTS-synthesised samples (5k positive &ldquo;Hey Nova&rdquo; + 8k negative), reaching <strong>100% validation accuracy</strong>. Trained model exported to ONNX (~30 KB) and loaded at runtime via ONNX Runtime &mdash; training dependencies (~2 GB) are an optional extra that stays out of production.</li>
+    <li><strong>Hybrid local/cloud inference.</strong> Local path (Whisper int8 + rule-based intent router) handles ~80% of commands in under 2 s. Complex reasoning escalates to Claude Sonnet behind a tier gate + user-controlled budget cap.</li>
+    <li><strong>Streaming real-time audio pipeline.</strong> VAD → wake classifier → lazy-loaded Whisper → intent → policy → execute, with memory cap enforcement, auto-throttle under system load, and mic release on pause.</li>
+    <li><strong>Four-tier authorization</strong> with three independent auth factors (voice, PIN via Argon2id, Windows Hello biometrics) and <strong>six independent recovery paths</strong> &mdash; a guarantee that the assistant can never lock the user out of their own machine.</li>
+    <li>Engineering hygiene: strict mypy, ruff, 83% test coverage on 500+ tests, Pydantic-validated config, AES-256-GCM audit log, Windows Credential Manager for secrets.</li>
+  </ul>
+</div>
+
+<!-- View 1: Context ================================================ -->
+<section class="view" id="context">
+  <div class="view-header">
+    <span class="view-tag context">View 1 · C4 Level 1</span>
+    <h3>System Context</h3>
+    <p class="blurb">
+      Nova as a single system inside the user&rsquo;s environment. Shows what Nova reads from
+      (mic, session state, credential store, filesystem), what it writes to (speakers, disk,
+      audit log), and which remote services it may call with explicit user opt-in.
+    </p>
+  </div>
+  <div class="view-body">
+    <div class="diagram-frame">
+      <img src="diagrams/01-context.svg" alt="Nova system context diagram" />
+    </div>
+    <div class="view-highlights">
+      <h4>Key architectural choices</h4>
+      <ul>
+        <li>Service runs strictly as <strong>user-mode</strong> (never SYSTEM) &mdash; lockout safety</li>
+        <li>All secrets in <strong>Windows Credential Manager</strong>, never in config files</li>
+        <li>Cloud calls are <strong>opt-in per user</strong> with a monthly spend cap</li>
+        <li>HuggingFace access is <strong>dev-time only</strong> (voice-model download) &mdash; production never phones home</li>
+      </ul>
+    </div>
+    <div class="view-footer">
+      <a href="diagrams/01-context.svg">SVG</a>
+      <a href="diagrams/01-context.png">PNG (200 DPI)</a>
+      <a href="diagrams/01-context.pdf">PDF</a>
+    </div>
+  </div>
+</section>
+
+<!-- View 2: Containers ============================================ -->
+<section class="view" id="containers">
+  <div class="view-header">
+    <span class="view-tag containers">View 2 · C4 Level 2</span>
+    <h3>Container View</h3>
+    <p class="blurb">
+      The processes and storage that make up Nova&rsquo;s runtime, and how they cooperate inside one
+      user session. Note how the training pipeline is a distinct, dev-time-only container &mdash;
+      its ~2 GB of dependencies never ship to production.
+    </p>
+  </div>
+  <div class="view-body">
+    <div class="diagram-frame">
+      <img src="diagrams/02-containers.svg" alt="Nova container view diagram" />
+    </div>
+    <div class="view-highlights">
+      <h4>Key architectural choices</h4>
+      <ul>
+        <li>Two cooperating in-process domains: <code>service</code> (voice + OS) and <code>ui</code> (Qt desktop), with decoupled Qt signal-slot communication</li>
+        <li><strong>Lean production footprint:</strong> PyTorch / librosa / Piper are an <code>[training]</code> extra, uninstallable after one-shot wake-word training</li>
+        <li>Tier-gated storage: PIN / recovery / DB-key hashes in Credential Manager; audit log in AES-256-GCM SQLite; wake-word models in per-user wake_models directory</li>
+        <li>Plugin subsystem is <strong>hot-reloadable</strong> &mdash; user-authored intents land without a service restart</li>
+      </ul>
+    </div>
+    <div class="view-footer">
+      <a href="diagrams/02-containers.svg">SVG</a>
+      <a href="diagrams/02-containers.png">PNG (200 DPI)</a>
+      <a href="diagrams/02-containers.pdf">PDF</a>
+    </div>
+  </div>
+</section>
+
+<!-- View 3: ML Pipeline =========================================== -->
+<section class="view" id="ml-pipeline">
+  <div class="view-header">
+    <span class="view-tag ml">View 3 · ML detail</span>
+    <h3>ML Pipeline</h3>
+    <p class="blurb">
+      Offline training pipeline (left) that produces the custom wake-word model, and the streaming
+      inference pipeline (right) that consumes it at runtime. The explicit boundary between training
+      and serving reflects an MLOps decision to keep the production runtime lean enough to run on
+      a laptop.
+    </p>
+  </div>
+  <div class="view-body">
+    <div class="diagram-frame">
+      <img src="diagrams/03-ml-pipeline.svg" alt="Nova ML pipeline diagram" />
+    </div>
+    <div class="view-highlights">
+      <h4>Key architectural choices</h4>
+      <ul>
+        <li><strong>End-to-end custom training</strong>: Piper TTS synthesises 13k clips across 10 voice personas → openwakeword feature extractor produces (N, 16, 96) embeddings → 4-layer CNN with SpecAugment + class-weighted BCE + cosine LR decay → torch.onnx.export</li>
+        <li><strong>Feature parity at training / serving boundary</strong>: training uses the same <code>AudioFeatures.embed_clips</code> feature extractor the runtime wake classifier consumes &mdash; no train/serve skew</li>
+        <li><strong>Model quantization</strong>: Whisper uses the int8 faster-whisper build (CTranslate2 backend) for 4× CPU speedup over FP32 with negligible accuracy loss</li>
+        <li><strong>Lazy-load with unload</strong>: Whisper weights load on first wake trigger, unload after 60 s of idle &mdash; ~300 MB RAM reclaimed when quiet</li>
+        <li><strong>Hybrid inference router</strong>: local intent classifier fires for the 20 built-in commands; Claude escalation only for <code>ask_anything</code> intents, tier-gated, preview-before-send</li>
+      </ul>
+    </div>
+    <div class="view-footer">
+      <a href="diagrams/03-ml-pipeline.svg">SVG</a>
+      <a href="diagrams/03-ml-pipeline.png">PNG (200 DPI)</a>
+      <a href="diagrams/03-ml-pipeline.pdf">PDF</a>
+    </div>
+  </div>
+</section>
+
+<!-- View 4: Security ============================================== -->
+<section class="view" id="security">
+  <div class="view-header">
+    <span class="view-tag security">View 4 · Security</span>
+    <h3>Security &amp; Authorization</h3>
+    <p class="blurb">
+      Four authorization tiers, three independent authentication factors (voice, PIN, Windows Hello),
+      and six recovery paths. The design guarantees the assistant can decline actions for the user
+      but can <em>never</em> prevent the user from using their machine.
+    </p>
+  </div>
+  <div class="view-body">
+    <div class="diagram-frame">
+      <img src="diagrams/04-security.svg" alt="Nova security and authorization diagram" />
+    </div>
+    <div class="view-highlights">
+      <h4>Key architectural choices</h4>
+      <ul>
+        <li><strong>Argon2id</strong> for PIN + recovery code hashing (time=2, memory=64 MB)</li>
+        <li>Biometrics via <strong>Windows Hello</strong> (UserConsentVerifier WinRT) &mdash; no local secret, OS-level attestation</li>
+        <li><strong>Fingerprint and PIN are independent factors</strong>: either alone satisfies Tier 2, so losing one still leaves recovery open</li>
+        <li><strong>Master toggle asymmetry</strong>: turning OFF is instant (no auth); turning ON requires PIN or Hello &mdash; prevents a bystander from silently re-enabling listening</li>
+        <li><strong>Low-level <code>Ctrl+Alt+F12</code> kill switch</strong> runs before any Nova processing, uninterceptable by voice</li>
+        <li><strong>5-attempt decay</strong> locks Tier 2 for 1 h after repeated failures, but <em>never</em> touches the OS &mdash; the user keeps working</li>
+      </ul>
+    </div>
+    <div class="view-footer">
+      <a href="diagrams/04-security.svg">SVG</a>
+      <a href="diagrams/04-security.png">PNG (200 DPI)</a>
+      <a href="diagrams/04-security.pdf">PDF</a>
+    </div>
+  </div>
+</section>
+
+<!-- Tech stack ==================================================== -->
+<h2 style="margin-top: 72px; font-size: 28px; font-weight: 700; letter-spacing: -0.01em;">Technology stack</h2>
+<div class="stack-grid">
+  <div class="stack-card">
+    <h4>ML &amp; Audio</h4>
+    <ul>
+      <li><strong>PyTorch</strong> · wake-word training</li>
+      <li><strong>openwakeword</strong> · feature extractor</li>
+      <li><strong>ONNX Runtime</strong> · inference</li>
+      <li><strong>faster-whisper</strong> · STT (int8)</li>
+      <li><strong>WebRTC VAD</strong> · voice activity</li>
+      <li><strong>Piper TTS</strong> · synthetic training data</li>
+      <li><strong>Edge-TTS + pyttsx3</strong> · response synth</li>
+      <li><strong>librosa</strong> · resample / preprocess</li>
+    </ul>
+  </div>
+  <div class="stack-card">
+    <h4>AI / Cloud</h4>
+    <ul>
+      <li><strong>Claude Sonnet 4.6</strong> · complex reasoning</li>
+      <li><strong>Anthropic SDK</strong> · with budget gating</li>
+      <li>Tier-gated · preview-before-send</li>
+      <li>User-controlled monthly budget cap</li>
+    </ul>
+  </div>
+  <div class="stack-card">
+    <h4>OS Integration</h4>
+    <ul>
+      <li><strong>pywin32</strong> · Win32 APIs</li>
+      <li><strong>winsdk</strong> · WinRT (Windows Hello)</li>
+      <li><strong>pycaw</strong> · Core Audio volume/mute</li>
+      <li><strong>screen-brightness-control</strong></li>
+      <li><strong>psutil</strong> · process + resource</li>
+      <li><strong>keyboard</strong> · global hotkeys</li>
+    </ul>
+  </div>
+  <div class="stack-card">
+    <h4>UI</h4>
+    <ul>
+      <li><strong>PySide6</strong> · Qt desktop UI</li>
+      <li><strong>pystray</strong> · native tray icon</li>
+      <li>First-run wizard · 10 guided steps</li>
+      <li>Dashboard · 13 functional tabs</li>
+    </ul>
+  </div>
+  <div class="stack-card">
+    <h4>Security &amp; Storage</h4>
+    <ul>
+      <li><strong>argon2-cffi</strong> · PIN hashing</li>
+      <li><strong>cryptography</strong> · AES-256-GCM audit log</li>
+      <li><strong>keyring</strong> · Credential Manager</li>
+      <li><strong>SQLite</strong> · audit + reminders</li>
+      <li><strong>Pydantic v2</strong> · validated config</li>
+    </ul>
+  </div>
+  <div class="stack-card">
+    <h4>Engineering</h4>
+    <ul>
+      <li><strong>uv</strong> · dependency management</li>
+      <li><strong>mypy</strong> strict · type safety</li>
+      <li><strong>ruff</strong> · lint + format</li>
+      <li><strong>pytest</strong> · 500+ tests, 83% cov</li>
+      <li><strong>pytest-qt</strong> · UI integration tests</li>
+      <li><strong>loguru</strong> · structured logging</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <p>Nova &mdash; architecture showcase.</p>
+  <p>Implementation repository is private. For depth: <a href="nova-design-doc.pdf">full design document (PDF)</a>.</p>
+  <p>Diagrams generated from D2 source · rendered via ELK layout · exported to SVG / PNG / PDF.</p>
+</footer>
+
+</body>
+</html>
