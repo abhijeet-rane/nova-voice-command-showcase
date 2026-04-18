@@ -1,6 +1,6 @@
 # Nova — architecture showcase
 
-[View the live showcase →](https://abhijeet-rane.github.io/nova-showcase/)
+[View the live showcase →](http://abhijeet-rane.github.io/nova-voice-command-showcase)
 
 A voice-controlled personal AI assistant for Windows 11. Hybrid local + cloud inference, custom-trained wake word, layered security with a zero-lockout guarantee.
 
@@ -12,7 +12,6 @@ A voice-controlled personal AI assistant for Windows 11. Hybrid local + cloud in
 |---|---|
 | `index.html` | Landing page &mdash; project overview, four architecture views, tech stack. Rendered via GitHub Pages. |
 | `diagrams/` | The four architecture views, each in SVG (web-quality), PNG (200 DPI for print/slides), and PDF (vector, print-ready). |
-| `nova-design-doc.pdf` | The full 40-page design document &mdash; goals, non-goals, feature catalogue, resource budget, threat model, roadmap. |
 
 ## Four architecture views
 
