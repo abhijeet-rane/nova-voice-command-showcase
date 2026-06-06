@@ -1,4 +1,4 @@
-# Nova — architecture showcase
+# Nova AI — Agentic AI System — Architecture Showcase
 
 [View the live showcase →](http://abhijeet-rane.github.io/nova-voice-command-showcase)
 
